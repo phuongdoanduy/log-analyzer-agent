@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Analyzer Agent — How to Use</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a25;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --text-muted: #8888a0;
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --orange: #f97316;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+    --google-blue: #4285f4;
+    --google-green: #34a853;
+    --google-yellow: #fbbc05;
+    --google-red: #ea4335;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 100px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .slide.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  .nav {
+    position: fixed;
+    bottom: 32px;
+    right: 40px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    z-index: 100;
+    font-size: 14px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .nav button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .nav button:hover { background: var(--accent); border-color: var(--accent); }
+
+  .progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: var(--accent);
+    transition: width 0.4s ease;
+    z-index: 100;
+  }
+
+  h1 {
+    font-size: 64px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    line-height: 1.1;
+  }
+
+  h2 {
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.15;
+    margin-bottom: 32px;
+  }
+
+  h3 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 16px;
+  }
+
+  p, li {
+    font-size: 20px;
+    line-height: 1.6;
+    color: var(--text-muted);
+  }
+
+  .subtitle {
+    font-size: 24px;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 12px;
+  }
+
+  .label {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent-light);
+    margin-bottom: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--cyan);
+  }
+
+  .full-width { width: 100%; }
+  .text-left { text-align: left; align-items: flex-start; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mt-32 { margin-top: 32px; }
+  .mt-48 { margin-top: 48px; }
+
+  .cards-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    width: 100%;
+  }
+
+  .cards-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    width: 100%;
+  }
+
+  .cards-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    width: 100%;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    transition: all 0.3s;
+  }
+
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .card h3 {
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .card p {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  .card ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .card li {
+    font-size: 15px;
+    padding: 5px 0;
+    padding-left: 20px;
+    position: relative;
+  }
+
+  .card li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--accent-light);
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  .tag-green { background: #22c55e20; color: var(--green); border: 1px solid #22c55e40; }
+  .tag-yellow { background: #eab30820; color: var(--yellow); border: 1px solid #eab30840; }
+  .tag-red { background: #ef444420; color: var(--red); border: 1px solid #ef444440; }
+  .tag-blue { background: #3b82f620; color: var(--blue); border: 1px solid #3b82f640; }
+  .tag-purple { background: #a855f720; color: var(--purple); border: 1px solid #a855f740; }
+  .tag-cyan { background: #06b6d420; color: var(--cyan); border: 1px solid #06b6d440; }
+
+  .code-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-muted);
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .code-block .kw { color: var(--purple); }
+  .code-block .fn { color: var(--blue); }
+  .code-block .str { color: var(--green); }
+  .code-block .cm { color: #555570; }
+  .code-block .var { color: var(--cyan); }
+  .code-block .url { color: var(--yellow); text-decoration: underline; }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 24px 0;
+    flex-wrap: wrap;
+  }
+
+  .flow-node {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 120px;
+  }
+
+  .flow-arrow {
+    color: var(--text-muted);
+    font-size: 20px;
+  }
+
+  .flow-node.highlight {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: white;
+  }
+
+  .flow-node.user {
+    border-color: var(--green);
+    background: #22c55e15;
+    color: var(--green);
+  }
+
+  .flow-node.agent {
+    border-color: var(--google-blue);
+    background: #4285f415;
+    color: var(--google-blue);
+  }
+
+  .flow-node.gcp {
+    border-color: var(--google-yellow);
+    background: #fbbc0515;
+    color: var(--google-yellow);
+  }
+
+  .title-slide {
+    text-align: center;
+    align-items: center;
+  }
+
+  .title-slide h1 {
+    background: linear-gradient(135deg, var(--google-blue), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .section-slide {
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 16px;
+  }
+
+  .compare-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+  }
+
+  .compare-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .compare-table tr:last-child td { border-bottom: none; }
+
+  .compare-table .feature {
+    font-weight: 600;
+    color: var(--text);
+    min-width: 160px;
+  }
+
+  .check { color: var(--green); font-weight: 700; }
+
+  .step-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 16px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+
+  .step {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin: 12px 0;
+  }
+
+  .step-content h4 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .step-content p {
+    font-size: 15px;
+  }
+
+  .arch-box {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  .arch-box .agent { color: var(--google-blue); font-weight: 700; }
+  .arch-box .tool { color: var(--green); }
+  .arch-box .state { color: var(--yellow); }
+  .arch-box .gcp { color: var(--google-yellow); }
+  .arch-box .arrow { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+  <div class="progress" id="progress"></div>
+
+  <!-- ═══ SLIDE 0: Title ═══ -->
+  <div class="slide title-slide active" data-slide="0">
+    <div class="label">Log Analyzer Agent</div>
+    <h1>How to Use<br>After Deploy</h1>
+    <p class="subtitle">4 ways to interact with your deployed agent</p>
+    <div class="mt-48" style="display:flex; gap:12px;">
+      <span class="tag tag-blue">REST API</span>
+      <span class="tag tag-green">Python SDK</span>
+      <span class="tag tag-purple">Claude Code</span>
+      <span class="tag tag-cyan">CLI Wrapper</span>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 1: Overview Flow ═══ -->
+  <div class="slide section-slide" data-slide="1">
+    <div class="label">Overview</div>
+    <h2>How It Works</h2>
+
+    <div class="flow mt-24">
+      <div class="flow-node user">👤 User</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node highlight">Claude Code</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node agent">🤖 Log Analyzer<br>Agent</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node gcp">☁️ GCP Cloud<br>Logging</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node agent">📊 Investigation<br>Report</div>
+    </div>
+
+    <div class="cards-4 mt-32">
+      <div class="card" style="border-top: 3px solid var(--blue);">
+        <h3 style="color:var(--blue);">REST API</h3>
+        <p>Direct HTTP calls to Agent Runtime endpoint. Best for automation & CI/CD.</p>
+        <div class="mt-16">
+          <span class="tag tag-blue">curl</span>
+          <span class="tag tag-blue">automation</span>
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--green);">
+        <h3 style="color:var(--green);">Python SDK</h3>
+        <p>Use vertexai SDK to connect. Best for app integration.</p>
+        <div class="mt-16">
+          <span class="tag tag-green">python</span>
+          <span class="tag tag-green">app</span>
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--purple);">
+        <h3 style="color:var(--purple);">Claude Code</h3>
+        <p>Reads CLAUDE.md, runs commands. Best for daily dev use.</p>
+        <div class="mt-16">
+          <span class="tag tag-purple">claude</span>
+          <span class="tag tag-purple">interactive</span>
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--cyan);">
+        <h3 style="color:var(--cyan);">CLI Wrapper</h3>
+        <p>Shell script wraps REST API. Best for quick terminal access.</p>
+        <div class="mt-16">
+          <span class="tag tag-cyan">bash</span>
+          <span class="tag tag-cyan">quick</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 2: REST API ═══ -->
+  <div class="slide section-slide" data-slide="2">
+    <div class="label">Method 1</div>
+    <h2 style="color:var(--blue);">REST API</h2>
+
+    <div class="cards-2 mt-24">
+      <div>
+        <h3 style="font-size:20px;">Step 1: Create Session</h3>
+        <div class="code-block">
+<span class="cm"># Get access token</span>
+<span class="var">TOKEN</span>=$(gcloud auth print-access-token)
+
+<span class="cm"># Create session</span>
+curl -X POST \
+  -H <span class="str">"Authorization: Bearer $TOKEN"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  <span class="str">"https://europe-west6-aiplatform.googleapis.com</span>
+<span class="str">  /v1/projects/klara-prod/locations/europe-west6</span>
+<span class="str">  /reasoningEngines/RESOURCE_ID:query"</span> \
+  -d <span class="str">'{
+    "class_method": "async_create_session",
+    "input": {"user_id": "u_123"}
+  }'</span>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:20px;">Step 2: Send Request</h3>
+        <div class="code-block">
+<span class="cm"># Send analysis request (SSE streaming)</span>
+curl -X POST \
+  -H <span class="str">"Authorization: Bearer $TOKEN"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  <span class="str">"https://europe-west6-aiplatform.googleapis.com</span>
+<span class="str">  /v1/projects/klara-prod/locations/europe-west6</span>
+<span class="str">  /reasoningEngines/RESOURCE_ID:streamQuery?alt=sse"</span> \
+  -d <span class="str">'{
+    "class_method": "async_stream_query",
+    "input": {
+      "user_id": "u_123",
+      "session_id": "SESSION_ID",
+      "message": "Analyze errors in dev-vn last 2h"
+    }
+  }'</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-24" style="display:flex; gap:16px;">
+      <span class="tag tag-green">✓ Direct control</span>
+      <span class="tag tag-green">✓ CI/CD friendly</span>
+      <span class="tag tag-yellow">△ Verbose</span>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 3: Python SDK ═══ -->
+  <div class="slide section-slide" data-slide="3">
+    <div class="label">Method 2</div>
+    <h2 style="color:var(--green);">Python SDK</h2>
+
+    <div class="code-block mt-24" style="font-size:15px;">
+<span class="kw">import</span> vertexai
+<span class="kw">from</span> vertexai <span class="kw">import</span> agent_engines
+
+<span class="cm"># 1. Connect to deployed agent</span>
+vertexai.<span class="fn">init</span>(project=<span class="str">"klara-prod"</span>, location=<span class="str">"europe-west6"</span>)
+agent = agent_engines.<span class="fn">get</span>(<span class="str">"projects/klara-prod/locations/europe-west6/reasoningEngines/RESOURCE_ID"</span>)
+
+<span class="cm"># 2. Create session</span>
+session = agent.<span class="fn">create_session</span>(user_id=<span class="str">"u_123"</span>)
+
+<span class="cm"># 3. Send analysis request</span>
+<span class="kw">for</span> event <span class="kw">in</span> agent.<span class="fn">stream_query</span>(
+    user_id=<span class="str">"u_123"</span>,
+    session_id=session[<span class="str">"id"</span>],
+    message=<span class="str">"Analyze errors in dev-vn last 2 hours"</span>
+):
+    <span class="fn">print</span>(event)
+    </div>
+
+    <div class="mt-24" style="display:flex; gap:16px;">
+      <span class="tag tag-green">✓ Clean API</span>
+      <span class="tag tag-green">✓ Type safe</span>
+      <span class="tag tag-green">✓ App integration</span>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 4: Claude Code ═══ -->
+  <div class="slide section-slide" data-slide="4">
+    <div class="label">Method 3</div>
+    <h2 style="color:var(--purple);">Claude Code</h2>
+
+    <div class="cards-2 mt-24">
+      <div>
+        <h3 style="font-size:20px;">User Experience</h3>
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Open Claude Code</h4>
+            <p>Navigate to project directory</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Ask naturally</h4>
+            <p>"Analyze errors in dev-vn last 2 hours"</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Claude Code executes</h4>
+            <p>Reads CLAUDE.md → runs CLI wrapper → gets results</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h4>Report delivered</h4>
+            <p>Investigation report with findings & recommendations</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:20px;">What Claude Code Does</h3>
+        <div class="code-block" style="font-size:14px;">
+<span class="cm"># Claude Code reads CLAUDE.md</span>
+<span class="cm"># Understands: project uses ADK,</span>
+<span class="cm"># has analyze-logs.sh wrapper</span>
+
+<span class="cm"># User says:</span>
+<span class="str">"Analyze errors in dev-vn last 2h"</span>
+
+<span class="cm"># Claude Code runs:</span>
+./analyze-logs.sh \
+  <span class="str">"Analyze errors in dev-vn last 2h"</span>
+
+<span class="cm"># Which calls deployed agent API</span>
+<span class="cm"># Returns investigation report</span>
+        </div>
+
+        <div class="mt-16 card" style="padding:16px; border-color:var(--purple);">
+          <p style="font-size:14px;"><strong style="color:var(--purple);">Key files Claude Code reads:</strong></p>
+          <ul>
+            <li><span class="mono">CLAUDE.md</span> — project context</li>
+            <li><span class="mono">analyze-logs.sh</span> — CLI wrapper</li>
+            <li><span class="mono">app/config.py</span> — env map</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 5: CLI Wrapper ═══ -->
+  <div class="slide section-slide" data-slide="5">
+    <div class="label">Method 4</div>
+    <h2 style="color:var(--cyan);">CLI Wrapper Script</h2>
+
+    <div class="code-block mt-24" style="font-size:14px;">
+<span class="cm">#!/bin/bash</span>
+<span class="cm"># analyze-logs.sh — Call deployed log-analyzer-agent</span>
+
+<span class="var">RESOURCE_ID</span>=<span class="str">"${LOG_ANALYZER_RESOURCE_ID}"</span>
+<span class="var">PROJECT</span>=<span class="str">"klara-prod"</span>
+<span class="var">REGION</span>=<span class="str">"europe-west6"</span>
+<span class="var">TOKEN</span>=$(gcloud auth print-access-token)
+
+<span class="cm"># 1. Create session</span>
+<span class="var">SESSION</span>=$(curl -s -X POST \
+  -H <span class="str">"Authorization: Bearer $TOKEN"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  <span class="str">"https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT}</span>
+<span class="str">  /locations/${REGION}/reasoningEngines/${RESOURCE_ID}:query"</span> \
+  -d <span class="str">'{"class_method":"async_create_session","input":{"user_id":"cli"}}'</span>)
+
+<span class="var">SESSION_ID</span>=$(echo <span class="var">$SESSION</span> | jq -r <span class="str">'.output.id'</span>)
+
+<span class="cm"># 2. Send analysis request</span>
+curl -s -X POST \
+  -H <span class="str">"Authorization: Bearer $TOKEN"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  <span class="str">"https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT}</span>
+<span class="str">  /locations/${REGION}/reasoningEngines/${RESOURCE_ID}:streamQuery?alt=sse"</span> \
+  -d <span class="str">"{
+    \"class_method\":\"async_stream_query\",
+    \"input\":{\"user_id\":\"cli\",\"session_id\":\"${SESSION_ID}\",\"message\":\"$1\"}
+  }"</span>
+    </div>
+
+    <div class="mt-24 code-block" style="font-size:15px;">
+<span class="cm"># Usage:</span>
+./analyze-logs.sh <span class="str">"Analyze errors in dev-vn last 2 hours"</span>
+./analyze-logs.sh <span class="str">"What hit prod last hour?"</span>
+./analyze-logs.sh <span class="str">"Check luz-baumer logs in dev-vn"</span>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 6: Deploy Flow ═══ -->
+  <div class="slide section-slide" data-slide="6">
+    <div class="label">Deploy</div>
+    <h2>Deploy → Use Flow</h2>
+
+    <div class="arch-box mt-24">
+<span class="arrow">┌─────────────────────────────────────────────────────────────────────┐</span>
+<span class="arrow">│</span>                        <span class="agent">DEPLOY PHASE</span>                                 <span class="arrow">│</span>
+<span class="arrow">├─────────────────────────────────────────────────────────────────────┤</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="tool">1. gcloud auth login</span>                                              <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="tool">2. agents-cli scaffold enhance . --deployment-target agent_runtime</span> <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="tool">3. agents-cli deploy</span>                                              <span class="arrow">│</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="gcp">→ Agent deployed to Vertex AI Agent Runtime</span>                       <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="gcp">→ Service account auto-created</span>                                    <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="gcp">→ RESOURCE_ID assigned</span>                                            <span class="arrow">│</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">└─────────────────────────────────────────────────────────────────────┘</span>
+                              <span class="arrow">│</span>
+                              <span class="arrow">▼</span>
+<span class="arrow">┌─────────────────────────────────────────────────────────────────────┐</span>
+<span class="arrow">│</span>                        <span class="agent">USE PHASE</span>                                    <span class="arrow">│</span>
+<span class="arrow">├─────────────────────────────────────────────────────────────────────┤</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="tool">User → Claude Code → analyze-logs.sh → Agent Runtime API</span>          <span class="arrow">│</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="agent">Agent uses Service Account (NOT user gcloud auth)</span>                 <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="agent">Service Account has roles/logging.viewer</span>                          <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="agent">Agent calls gcloud logging read → fetches logs</span>                    <span class="arrow">│</span>
+<span class="arrow">│</span>  <span class="agent">Agent analyzes → generates report</span>                                 <span class="arrow">│</span>
+<span class="arrow">│</span>                                                                     <span class="arrow">│</span>
+<span class="arrow">└─────────────────────────────────────────────────────────────────────┘</span>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 7: Comparison ═══ -->
+  <div class="slide section-slide" data-slide="7">
+    <div class="label">Comparison</div>
+    <h2>Which Method to Use?</h2>
+
+    <table class="compare-table mt-24">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th style="color:var(--blue);">REST API</th>
+          <th style="color:var(--green);">Python SDK</th>
+          <th style="color:var(--purple);">Claude Code</th>
+          <th style="color:var(--cyan);">CLI Wrapper</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="feature">Setup</td>
+          <td>None</td>
+          <td>pip install</td>
+          <td>CLAUDE.md</td>
+          <td>chmod +x</td>
+        </tr>
+        <tr>
+          <td class="feature">Ease of use</td>
+          <td>⭐⭐</td>
+          <td>⭐⭐⭐</td>
+          <td>⭐⭐⭐⭐⭐</td>
+          <td>⭐⭐⭐⭐</td>
+        </tr>
+        <tr>
+          <td class="feature">Best for</td>
+          <td>CI/CD, scripts</td>
+          <td>App integration</td>
+          <td>Daily dev</td>
+          <td>Quick terminal</td>
+        </tr>
+        <tr>
+          <td class="feature">Streaming</td>
+          <td><span class="check">✓</span> SSE</td>
+          <td><span class="check">✓</span> async</td>
+          <td><span class="check">✓</span> auto</td>
+          <td><span class="check">✓</span> SSE</td>
+        </tr>
+        <tr>
+          <td class="feature">Auth needed</td>
+          <td>gcloud token</td>
+          <td>ADC</td>
+          <td>gcloud token</td>
+          <td>gcloud token</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="mt-32 card" style="border:2px solid var(--green); text-align:center;">
+      <h3 style="color:var(--green);">💡 Recommendation</h3>
+      <p style="font-size:18px; color:var(--text);">
+        Daily use → <span style="color:var(--purple);">Claude Code</span> &nbsp;|&nbsp;
+        Automation → <span style="color:var(--blue);">REST API</span> &nbsp;|&nbsp;
+        Quick check → <span style="color:var(--cyan);">CLI Wrapper</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 8: End ═══ -->
+  <div class="slide title-slide" data-slide="8">
+    <div class="label">Summary</div>
+    <h1>Ready to Use</h1>
+    <p class="subtitle">Deploy once → Use everywhere via Claude Code, REST, SDK, or CLI</p>
+    <div class="mt-48 code-block" style="text-align:center; max-width:600px;">
+<span class="cm"># Quick start after deploy:</span>
+./analyze-logs.sh <span class="str">"Analyze errors in dev-vn last 2 hours"</span>
+    </div>
+    <div class="mt-32" style="display:flex; gap:24px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-muted);">
+      <span>github.com/phuongdoanduy/log-analyzer-agent</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Navigation ─── -->
+<div class="nav">
+  <button onclick="navigate(-1)">←</button>
+  <span id="slideNum">1 / 9</span>
+  <button onclick="navigate(1)">→</button>
+</div>
+
+<script>
+  const deck = document.getElementById('deck');
+  const slides = deck.querySelectorAll('.slide');
+  const progress = document.getElementById('progress');
+  const slideNum = document.getElementById('slideNum');
+  const total = slides.length;
+  let current = parseInt(localStorage.getItem('log-analyzer-deck-slide') || '0');
+
+  function showSlide(n) {
+    slides.forEach(s => s.classList.remove('active'));
+    slides[n].classList.add('active');
+    progress.style.width = ((n + 1) / total * 100) + '%';
+    slideNum.textContent = (n + 1) + ' / ' + total;
+    localStorage.setItem('log-analyzer-deck-slide', n);
+  }
+
+  function navigate(dir) {
+    current = Math.max(0, Math.min(total - 1, current + dir));
+    showSlide(current);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); navigate(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); navigate(-1); }
+    if (e.key === 'Home') { current = 0; showSlide(current); }
+    if (e.key === 'End') { current = total - 1; showSlide(current); }
+  });
+
+  let touchStartX = 0;
+  deck.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  deck.addEventListener('touchend', e => {
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) navigate(diff > 0 ? 1 : -1);
+  });
+
+  showSlide(current);
+</script>
+</body>
+</html>
