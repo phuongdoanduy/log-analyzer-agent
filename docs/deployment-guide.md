@@ -54,13 +54,15 @@ uv sync --extra lint
 # Copy example env file
 cp .env.example .env
 
-# Edit .env and add your GOOGLE_API_KEY
+# Edit .env and set your GCP project
 nano .env
 ```
 
 **Required Variables:**
 ```env
-GOOGLE_API_KEY=your-gemini-api-key-here
+GOOGLE_GENAI_USE_VERTEXAI=TRUE
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=global
 ```
 
 **Optional Variables:**
@@ -222,7 +224,10 @@ docker tag log-analyzer:0.1.0 gcr.io/YOUR_PROJECT_ID/log-analyzer:0.1.0
 ### Run Container Locally
 ```bash
 # Run with environment variables
-docker run -e GOOGLE_API_KEY=your-key \
+docker run \
+  -e GOOGLE_GENAI_USE_VERTEXAI=TRUE \
+  -e GOOGLE_CLOUD_PROJECT=your-project-id \
+  -e GOOGLE_CLOUD_LOCATION=global \
   -p 8080:8080 \
   log-analyzer:0.1.0
 
@@ -255,7 +260,9 @@ gcloud container images list --repository=gcr.io/YOUR_PROJECT_ID
 docker logs <container_id>
 
 # Run with interactive shell
-docker run -it -e GOOGLE_API_KEY=your-key \
+docker run -it \
+  -e GOOGLE_GENAI_USE_VERTEXAI=TRUE \
+  -e GOOGLE_CLOUD_PROJECT=your-project-id \
   log-analyzer:0.1.0 \
   /bin/bash
 
@@ -292,7 +299,9 @@ gcloud agents create log-analyzer \
 # In Agent Runtime console or via gcloud
 gcloud agents update log-analyzer \
   --update-env-variables \
-  GOOGLE_API_KEY=your-key,\
+  GOOGLE_GENAI_USE_VERTEXAI=TRUE,\
+GOOGLE_CLOUD_PROJECT=your-project-id,\
+GOOGLE_CLOUD_LOCATION=global,\
 LOGS_BUCKET_NAME=your-bucket,\
 OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT
 ```
@@ -339,7 +348,7 @@ gcloud run deploy log-analyzer \
   --image gcr.io/YOUR_PROJECT_ID/log-analyzer \
   --platform managed \
   --region us-central1 \
-  --set-env-vars "GOOGLE_API_KEY=your-key" \
+  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,GOOGLE_CLOUD_LOCATION=global" \
   --allow-unauthenticated
 ```
 
@@ -357,7 +366,9 @@ gcloud run services describe log-analyzer
 ### Required
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `GOOGLE_API_KEY` | Gemini API key | `AIzaSy...` |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Enable Vertex AI (ADC) auth | `TRUE` |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID for Vertex AI | `my-project-123` |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI region | `global` |
 
 ### Optional
 | Variable | Description | Default |
@@ -411,13 +422,11 @@ gcloud config get-value project
 gcloud logging read "severity=ERROR" --limit 5
 ```
 
-### Verify Gemini API
+### Verify Vertex AI Access
 ```bash
-# Make a test API call
-curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent \
-  -H "x-goog-api-key: YOUR_GOOGLE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"test"}]}]}'
+# Test ADC credentials and Vertex AI access
+gcloud auth application-default print-access-token
+gcloud ml-engine models list --project YOUR_PROJECT_ID
 ```
 
 ### FastAPI Health Check
@@ -454,19 +463,17 @@ which gcloud
 # Windows: Download from https://cloud.google.com/sdk/docs/install
 ```
 
-### "GOOGLE_API_KEY not found"
+### "Vertex AI auth failed"
 ```bash
-# Verify .env file exists
-ls -la .env
+# Re-authenticate ADC
+gcloud auth login --update-adc
 
-# Verify GOOGLE_API_KEY is set
-grep GOOGLE_API_KEY .env
+# Verify .env has required vars
+grep GOOGLE_GENAI_USE_VERTEXAI .env
+grep GOOGLE_CLOUD_PROJECT .env
 
-# Test API key works
-curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent \
-  -H "x-goog-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"test"}]}]}'
+# Test ADC access token
+gcloud auth application-default print-access-token
 ```
 
 ### "Permission denied" reading logs
@@ -495,11 +502,8 @@ This is a legitimate error from logs, not a deployment issue. It indicates:
 # Check gcloud is responsive
 timeout 5 gcloud logging read --limit 1
 
-# Check Gemini API latency
-time curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent \
-  -H "x-goog-api-key: $GOOGLE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"test"}]}]}'
+# Check Vertex AI latency
+time gcloud auth application-default print-access-token
 
 # If slow, may need to optimize or scale
 ```
@@ -534,13 +538,18 @@ gcloud run deploy log-analyzer \
 
 ## Security Best Practices
 
-### 1. API Key Management
+### 1. Credential Management
 ```bash
-# Use Secret Manager, not .env in production
-gcloud secrets create gemini-api-key --data-file=- <<< "$GOOGLE_API_KEY"
+# Use a dedicated service account in production (not user ADC)
+gcloud iam service-accounts create log-analyzer-sa \
+  --display-name="Log Analyzer Service Account"
 
-# Reference in deployment
---set-env-vars="GOOGLE_API_KEY=projects/PROJECT_ID/secrets/gemini-api-key/latest"
+# Grant Vertex AI access
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member=serviceAccount:log-analyzer-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/aiplatform.user
+
+# Cloud Run picks up the attached service account automatically
 ```
 
 ### 2. CORS Configuration
@@ -600,7 +609,7 @@ Before deploying to production:
 - [ ] Docker image runs locally
 - [ ] Environment variables set correctly
 - [ ] gcloud authentication verified
-- [ ] Gemini API key tested
+- [ ] Vertex AI ADC credentials verified (`gcloud auth application-default print-access-token`)
 - [ ] CORS origins whitelisted
 - [ ] Monitoring dashboard created
 - [ ] Rollback plan documented

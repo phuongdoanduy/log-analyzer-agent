@@ -83,12 +83,14 @@ agents-cli eval compare baseline.json candidate.json
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `GOOGLE_API_KEY` | Yes | Gemini API access |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Yes | Set to `TRUE` to use Vertex AI (ADC) |
+| `GOOGLE_CLOUD_PROJECT` | Yes | GCP project ID for Vertex AI |
+| `GOOGLE_CLOUD_LOCATION` | Yes | Vertex AI region (e.g. `global`, `us-central1`) |
 | `LOGS_BUCKET_NAME` | No | GCS bucket for OTel telemetry upload |
 | `ALLOW_ORIGINS` | No | Comma-separated CORS origins for FastAPI |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | No | Set to `NO_CONTENT` to enable telemetry |
 
-Copy `.env.example` to `.env` and add `GOOGLE_API_KEY`.
+Auth uses Application Default Credentials. Run `gcloud auth login --update-adc` then copy `.env.example` to `.env` and set your project ID.
 
 ## Architecture
 

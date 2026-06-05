@@ -578,7 +578,7 @@ if ALLOW_ORIGINS:
 - Optional: redact sensitive fields in reports
 
 ### API Security
-- Require GOOGLE_API_KEY for Gemini
+- Vertex AI auth via Application Default Credentials (no API key)
 - Use CORS allow-list (ALLOW_ORIGINS)
 - Audit logs via Google Cloud Logging
 
@@ -623,7 +623,7 @@ pytest tests/unit/ -v
 ### Docker Build
 ```bash
 docker build -t log-analyzer:0.1.0 .
-docker run -e GOOGLE_API_KEY=... log-analyzer:0.1.0
+docker run -e GOOGLE_GENAI_USE_VERTEXAI=TRUE -e GOOGLE_CLOUD_PROJECT=your-project log-analyzer:0.1.0
 ```
 
 ## Summary Checklist

@@ -501,7 +501,7 @@ agent: "The environment 'invalid-env' is not supported.
 
 ### Authentication & Authorization
 - **GCP Auth:** gcloud CLI handles credentials (no hardcoded keys)
-- **Gemini API:** GOOGLE_API_KEY in environment (not code)
+- **Gemini/Vertex AI:** Application Default Credentials via `gcloud auth login --update-adc` (no API key in code)
 - **User Auth:** FastAPI could add OAuth/JWT (Phase 3)
 
 ### Data Flow Security

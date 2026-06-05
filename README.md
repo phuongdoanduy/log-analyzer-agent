@@ -19,12 +19,9 @@ AI-powered GCP log analysis platform that automates incident investigation for D
 # Python 3.11+
 python3 --version
 
-# gcloud CLI authenticated
+# gcloud CLI authenticated (Application Default Credentials)
 gcloud auth login --update-adc
 gcloud config set project YOUR_PROJECT_ID
-
-# Gemini API key
-export GOOGLE_API_KEY=your-key-here
 ```
 
 ### 2. Install & Run
@@ -32,6 +29,10 @@ export GOOGLE_API_KEY=your-key-here
 # Clone & install
 git clone <repo-url> && cd log-analyzer-agent
 uv sync
+
+# Configure auth
+cp .env.example .env
+# Edit .env: set GOOGLE_CLOUD_PROJECT=your-project-id
 
 # Test it
 agents-cli run "analyze errors in dev-vn last 2 hours"
@@ -139,7 +140,11 @@ adk api_server --port 8000
 ### Deploy Locally in Docker
 ```bash
 docker build -t log-analyzer .
-docker run -e GOOGLE_API_KEY=... -p 8080:8080 log-analyzer
+docker run \
+  -e GOOGLE_GENAI_USE_VERTEXAI=TRUE \
+  -e GOOGLE_CLOUD_PROJECT=your-project-id \
+  -e GOOGLE_CLOUD_LOCATION=global \
+  -p 8080:8080 log-analyzer
 ```
 
 ### Deploy to Cloud
@@ -203,10 +208,10 @@ See [docs/code-standards.md](docs/code-standards.md) for detailed standards.
 ### "gcloud: command not found"
 Install Google Cloud SDK: https://cloud.google.com/sdk/docs/install
 
-### "GOOGLE_API_KEY not found"
+### "Vertex AI auth failed"
 ```bash
-export GOOGLE_API_KEY=your-key-here
-# Or copy to .env: cp .env.example .env && nano .env
+gcloud auth login --update-adc
+# Ensure .env has GOOGLE_GENAI_USE_VERTEXAI=TRUE and GOOGLE_CLOUD_PROJECT set
 ```
 
 ### "Unknown environment: xyz"

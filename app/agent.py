@@ -19,9 +19,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.apps.app import App
 from google.adk.events import Event, EventActions
-from google.adk.planners import BuiltInPlanner
 from google.adk.tools import FunctionTool
-from google.adk.tools.mcp_tool import McpToolset
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 
@@ -145,6 +143,7 @@ def fetch_gcp_logs(
     service_filter: str = "",
     limit: int = 500,
     output_file: str = "/tmp/gcp_logs.json",
+    env: str = "",
 ) -> str:
     """Fetch logs from GCP Cloud Logging using gcloud CLI.
 
@@ -155,6 +154,7 @@ def fetch_gcp_logs(
         service_filter: Optional service/container name filter.
         limit: Maximum number of log entries to fetch.
         output_file: Path to save fetched logs as JSON.
+        env: Optional GCP environment name to target GKE container logs.
 
     Returns:
         JSON with fetch status, count, and output file path.
@@ -180,6 +180,23 @@ def fetch_gcp_logs(
 
         # Build filter string
         filters = [timestamp_filter]
+
+        # Scope to GKE containers to avoid project-level permission issues
+        filters.append('resource.type="k8s_container"')
+
+        if env:
+            env_config = config.env_map.get(env.lower())
+            if env_config:
+                cluster = env_config.get("cluster")
+                location = env_config.get("region")
+                namespace = env_config.get("namespace")
+                if cluster:
+                    filters.append(f'resource.labels.cluster_name="{cluster}"')
+                if location:
+                    filters.append(f'resource.labels.location="{location}"')
+                if namespace:
+                    filters.append(f'resource.labels.namespace_name="{namespace}"')
+
         if severity_filter:
             filters.append(severity_filter)
         if service_filter:
@@ -475,16 +492,47 @@ def build_report_callback(callback_context: CallbackContext) -> genai_types.Cont
 
     Computes severity level, adds metadata header.
     """
+    def clean_json_str(raw_str: str) -> str:
+        raw_str = raw_str.strip()
+        if raw_str.startswith("```"):
+            lines = raw_str.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines[-1].startswith("```"):
+                lines = lines[:-1]
+            raw_str = "\n".join(lines).strip()
+        return raw_str
+
     report = callback_context.state.get("investigation_report", "")
     analysis = callback_context.state.get("log_analysis", "")
-    env = callback_context.state.get("target_env", "unknown")
+    
+    # Try to resolve environment
+    env = callback_context.state.get("target_env", "")
+    if not env:
+        params_str = callback_context.state.get("analysis_params", "")
+        if params_str:
+            try:
+                params_data = json.loads(clean_json_str(params_str))
+                env = params_data.get("env", "unknown")
+            except Exception:
+                env = "unknown"
+        else:
+            env = "unknown"
 
     # Determine overall severity
     severity_level = "low"
     if analysis:
         try:
-            data = json.loads(analysis) if isinstance(analysis, str) else analysis
-            total_errors = data.get("total_errors", 0)
+            cleaned_analysis = clean_json_str(analysis)
+            data = json.loads(cleaned_analysis) if isinstance(cleaned_analysis, str) else cleaned_analysis
+            total_errors = data.get("total_errors")
+            if total_errors is None:
+                # Sum ERROR and CRITICAL from breakdown
+                breakdown = data.get("severity_breakdown", {})
+                total_errors = sum(
+                    count for level, count in breakdown.items()
+                    if level.upper() in ("ERROR", "CRITICAL", "FATAL")
+                )
             if total_errors > 50:
                 severity_level = "critical"
             elif total_errors > 20:
@@ -586,6 +634,7 @@ Given the user's request, extract these parameters:
 | Param | Default | Description |
 |-------|---------|-------------|
 | env | (required) | GCP environment: {', '.join(config.env_map.keys())} |
+| project | (required) | GCP project ID mapped from env using map below |
 | service | (optional) | Service/container name filter |
 | severity | ERROR | Minimum severity: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | freshness | 1h | Time window: 1h, 2h, 30m, 1d |
@@ -619,13 +668,14 @@ log_fetcher = LlmAgent(
 
 Read the 'analysis_params' state key for:
 - project: GCP project ID
+- env: GCP environment name (e.g., dev-vn, dev, test)
 - severity: Minimum severity level
 - freshness: Time window
 - service_filter: Optional service filter
 - limit: Max entries
 
 **Steps:**
-1. Call `fetch_gcp_logs` with the resolved parameters
+1. Call `fetch_gcp_logs` with the resolved parameters (including env)
 2. Check the result status
 3. If error, report it and stop
 4. If success, report the count and file path
@@ -701,8 +751,8 @@ report_composer = LlmAgent(
 
 ## 2. Error Summary
 - Total errors and warnings
-- Severity breakdown table
-- Top 5 error patterns
+- Severity breakdown (use a simple list or bullet points, do NOT use a table)
+- Top 5 error patterns (use a numbered or bulleted list, do NOT use a table)
 
 ## 3. Detailed Findings
 For each error group:
@@ -710,11 +760,11 @@ For each error group:
 - Count and frequency
 - Affected services
 - Potential root cause
-- Sample log messages
+- Sample log messages (bullet points)
 
 ## 4. Affected Services
 - List of services/containers with errors
-- Error count per service
+- Error count per service (use bullet points)
 
 ## 5. Recommendations
 - Immediate actions to take
@@ -728,11 +778,13 @@ For each error group:
 
 ---
 ### RULES
-- Every finding must have evidence from the logs
-- Never guess root cause without log evidence
-- State when evidence is insufficient
-- Be specific about affected services and error patterns
-- Include actionable recommendations
+- NEVER use markdown tables anywhere in the report. Use clear bullet points or numbered lists instead.
+- Every finding must have evidence from the logs.
+- Never guess root cause without log evidence.
+- State when evidence is insufficient.
+- Be specific about affected services and error patterns.
+- Include actionable recommendations.
+- Avoid extensive whitespace padding or alignment spacing.
 """,
     output_key="investigation_report",
     after_agent_callback=build_report_callback,

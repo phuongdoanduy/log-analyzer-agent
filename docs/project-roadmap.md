@@ -231,7 +231,7 @@ Operationalize the agent for production use by SRE teams.
 **Status:** Code-ready, not yet deployed  
 **Steps:**
 1. Run `agents-cli deploy` to Agent Runtime
-2. Configure environment (GOOGLE_API_KEY, LOGS_BUCKET_NAME)
+2. Configure environment (GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT, LOGS_BUCKET_NAME)
 3. Set up monitoring dashboard
 4. Configure CORS for web integrations
 

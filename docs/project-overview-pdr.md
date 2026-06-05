@@ -215,7 +215,7 @@
 
 ### Assumptions
 - User has gcloud CLI installed and authenticated
-- GOOGLE_API_KEY (Gemini) is available in environment
+- Application Default Credentials configured (`gcloud auth login --update-adc`)
 - GCP environments are stable and logs are queryable
 - Error messages are meaningful (not completely random strings)
 - Typical analysis window is 1-24 hours of logs

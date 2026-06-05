@@ -158,7 +158,9 @@ Agents communicate exclusively via session state (`output_key` in ADK):
 ## Configuration
 
 **Environment Variables:**
-- `GOOGLE_API_KEY` — Gemini API key (required)
+- `GOOGLE_GENAI_USE_VERTEXAI` — Set to `TRUE` (required)
+- `GOOGLE_CLOUD_PROJECT` — GCP project for Vertex AI (required)
+- `GOOGLE_CLOUD_LOCATION` — Vertex AI region, e.g. `global` (required)
 - `LOGS_BUCKET_NAME` — GCS bucket for telemetry (optional)
 - `ALLOW_ORIGINS` — CORS origins (optional)
 - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` — Set to `NO_CONTENT` to enable telemetry

@@ -8,6 +8,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+# Force Vertex AI auth via Application Default Credentials (gcloud auth)
+os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
+os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "klara-nonprod")
+
+
 
 @dataclass
 class LogAnalyzerConfig:
@@ -48,9 +54,9 @@ class LogAnalyzerConfig:
     })
 
     # Model configuration
-    worker_model: str = "gemma-4-26b-a4b-it"
-    fallback_model: str = "gemma-4-26b-a4b-it"
-    critic_model: str = "gemma-4-31b-it"
+    worker_model: str = "gemini-2.5-flash"
+    fallback_model: str = "gemini-2.5-flash"
+    critic_model: str = "gemini-2.5-flash"
 
     # Default analysis parameters
     default_severity: str = "ERROR"
