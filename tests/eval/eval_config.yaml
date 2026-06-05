@@ -1,46 +1,55 @@
 metrics_to_run:
   - multi_turn_task_success
   - final_response_quality
+  - env_resolution_accuracy
+  - report_completeness
+  - no_hallucinated_errors
 
 custom_metrics:
   - name: env_resolution_accuracy
     prompt_template: |
       Evaluate whether the agent correctly resolved the GCP environment from the user's request.
-      
+
       User request: {prompt}
       Agent response: {response}
-      
+      Full trace: {agent_data}
+
       Check:
       1. Did the agent identify the correct environment (dev-vn, dev, test, performance, prod)?
       2. Did it map to the correct GCP project?
       3. If env was ambiguous, did it ask for clarification?
-      
-      Return JSON: {"score": <1|2|3|4|5>, "explanation": "<reason>"}
+
+      IMPORTANT: Return ONLY a valid JSON object with no surrounding text, markdown, or explanation outside the JSON.
+      Output exactly: {"score": <1|2|3|4|5>, "explanation": "<reason>"}
 
   - name: report_completeness
     prompt_template: |
       Evaluate the completeness of the log analysis report.
-      
+
       User request: {prompt}
       Report: {response}
-      
+
       Check for these sections:
       1. Executive summary
       2. Error summary with severity breakdown
       3. Detailed findings with error patterns
       4. Affected services list
       5. Actionable recommendations
-      
-      Return JSON: {"score": <1|2|3|4|5>, "explanation": "<reason>"}
+
+      IMPORTANT: Return ONLY a valid JSON object with no surrounding text, markdown, or explanation outside the JSON.
+      Output exactly: {"score": <1|2|3|4|5>, "explanation": "<reason>"}
 
   - name: no_hallucinated_errors
     prompt_template: |
       Check if the agent fabricated any error patterns or findings not present in actual logs.
-      
+
       User request: {prompt}
       Report: {response}
-      
-      The agent should only report errors found in actual log data. If it invents
-      error patterns, service names, or findings without log evidence, score low.
-      
-      Return JSON: {"score": <1|2|3|4|5>, "explanation": "<reason>"}
+      Full trace (tool calls and responses): {agent_data}
+
+      The agent should only report errors found in actual log data returned by tools.
+      If it invents error patterns, service names, or findings without log evidence, score low.
+      A score of 5 means no hallucination detected; 1 means clear fabrication.
+
+      IMPORTANT: Return ONLY a valid JSON object with no surrounding text, markdown, or explanation outside the JSON.
+      Output exactly: {"score": <1|2|3|4|5>, "explanation": "<reason>"}

@@ -34,6 +34,20 @@
         "role": "user",
         "parts": [{"text": "Show me WARNING level logs from test environment last 30 minutes"}]
       }
+    },
+    {
+      "eval_case_id": "invalid_env",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Analyze errors in staging environment last 1 hour"}]
+      }
+    },
+    {
+      "eval_case_id": "empty_logs",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Show me CRITICAL logs from dev environment in the last 5 minutes"}]
+      }
     }
   ]
 }

@@ -48,8 +48,9 @@ class LogAnalyzerConfig:
     })
 
     # Model configuration
-    worker_model: str = "gemini-2.0-flash"
-    critic_model: str = "gemini-2.0-flash"
+    worker_model: str = "gemma-4-26b-a4b-it"
+    fallback_model: str = "gemma-4-26b-a4b-it"
+    critic_model: str = "gemma-4-31b-it"
 
     # Default analysis parameters
     default_severity: str = "ERROR"

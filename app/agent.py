@@ -430,6 +430,18 @@ report_save_tool = FunctionTool(save_report)
 # ═══════════════════════════════════════════════════════════════
 
 
+def init_coordinator_state(callback_context: CallbackContext) -> None:
+    """Initialize state keys used in coordinator instruction template.
+
+    Prevents 'Context variable not found' on the first turn before the
+    pipeline has run and populated these keys.
+    """
+    state = callback_context.state
+    for key in ("final_report", "investigation_report"):
+        if key not in state:
+            state[key] = ""
+
+
 def collect_errors_callback(callback_context: CallbackContext) -> None:
     """Collects and deduplicates errors from log analysis results.
 
@@ -517,8 +529,9 @@ class _EvalSequentialAgent(SequentialAgent):
 class PreflightChecker(BaseAgent):
     """Checks gcloud authentication and environment readiness.
 
-    Analogous to ComplianceChecker in a11y-agent — verifies prerequisites
-    before allowing the pipeline to proceed.
+    In production (STRICT_PREFLIGHT=true) auth failure escalates and stops
+    the pipeline. In eval/dev the check is advisory — a warning is stored in
+    state so downstream agents can report it, but the pipeline continues.
     """
 
     instruction: str = ""
@@ -530,18 +543,26 @@ class PreflightChecker(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        # Verify gcloud auth
+        import os
+        strict = os.environ.get("STRICT_PREFLIGHT", "false").lower() == "true"
+
         auth_result = verify_gcloud_auth()
         auth_data = json.loads(auth_result)
 
         if auth_data.get("status") != "ok":
             logger.warning(f"[{self.name}] gcloud auth issue: {auth_data}")
-            yield Event(
-                author=self.name,
-                actions=EventActions(escalate=True),
-            )
+            if strict:
+                yield Event(
+                    author=self.name,
+                    actions=EventActions(escalate=True),
+                )
+            else:
+                # Store warning in state; pipeline continues so eval cases complete
+                ctx.session.state["preflight_warning"] = auth_data.get("message", "gcloud not authenticated")
+                yield Event(author=self.name)
         else:
             logger.info(f"[{self.name}] gcloud auth OK: {auth_data.get('active_account')}")
+            ctx.session.state.pop("preflight_warning", None)
             yield Event(author=self.name)
 
 
@@ -553,6 +574,7 @@ class PreflightChecker(BaseAgent):
 param_gatherer = LlmAgent(
     model=config.worker_model,
     name="param_gatherer",
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     description=(
         "Extracts log analysis parameters from the user's request. "
         "Infers env, service, severity, freshness, and limit."
@@ -588,6 +610,7 @@ User request: {{{{user_request?}}}}
 log_fetcher = LlmAgent(
     model=config.worker_model,
     name="log_fetcher",
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     description=(
         "Fetches logs from GCP Cloud Logging using gcloud CLI. "
         "Uses parameters from the param_gatherer."
@@ -625,9 +648,7 @@ log_analyzer = LlmAgent(
         "Analyzes fetched logs: groups errors, identifies patterns, "
         "computes severity breakdown, and finds top issues."
     ),
-    planner=BuiltInPlanner(
-        thinking_config=genai_types.ThinkingConfig(include_thoughts=True)
-    ),
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     instruction="""You are a meticulous log analyst. Analyze the fetched log file and produce a structured report.
 
 Read 'fetch_result' state key for the log file path.
@@ -657,13 +678,14 @@ report_composer = LlmAgent(
     model=config.worker_model,
     name="report_composer",
     include_contents="none",
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     description=(
         "Transforms log analysis into a professional investigation report "
         "with findings, recommendations, and actionable next steps."
     ),
     instruction="""You are an incident investigator. Transform the log analysis into a professional report.
 
---- 
+---
 ### INPUT DATA
 * Analysis Params: `{analysis_params}`
 * Fetch Result: `{fetch_result}`
@@ -722,15 +744,18 @@ report_saver = LlmAgent(
     model=config.worker_model,
     name="report_saver",
     include_contents="none",
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     description="Saves the investigation report to a markdown file.",
     instruction="""Save the investigation report to disk.
 
-Read these state keys:
-- `final_report`: The complete report content
-- `analysis_params`: Contains the env name
+Report content:
+{final_report}
+
+Analysis params (contains env name):
+{analysis_params}
 
 Call `save_report` with:
-- report_content: the final_report content
+- report_content: the final_report content above
 - env: the environment name from analysis_params
 
 Report the saved file path to the user.
@@ -748,10 +773,11 @@ Report the saved file path to the user.
 log_analysis_pipeline = _EvalSequentialAgent(
     name="log_analysis_pipeline",
     description=(
-        "Executes a complete GCP log analysis. Gathers parameters, "
+        "Executes a complete GCP log analysis. Checks auth, gathers parameters, "
         "fetches logs, analyzes errors, and composes an investigation report."
     ),
     sub_agents=[
+        PreflightChecker(name="preflight_checker"),
         param_gatherer,
         log_fetcher,
         log_analyzer,
@@ -764,6 +790,8 @@ log_analysis_pipeline = _EvalSequentialAgent(
 log_analyst_coordinator = LlmAgent(
     name="log_analyst_coordinator",
     model=config.worker_model,
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
+    before_agent_callback=init_coordinator_state,
     description=(
         "The primary log analysis assistant. Collaborates with the user to "
         "understand the investigation request, then executes the full analysis pipeline."
@@ -792,13 +820,16 @@ log_analyst_coordinator = LlmAgent(
 1. **Understand**: Parse the user's request → identify env, service, time range
 2. **Clarify**: If env is unclear, ask before proceeding
 3. **Execute**: Delegate to log_analysis_pipeline
-4. **Report**: Present findings to user in a clear, actionable format
+4. **Present**: After the pipeline completes, present the full investigation
+   report to the user. If the pipeline stored a `final_report`, output it
+   verbatim. Never end your turn with just a delegation message.
 
 **RULES:**
 - Never guess root cause without log evidence
 - Always tell user if data was truncated
 - Be specific about error patterns and affected services
 - Include actionable recommendations
+- ALWAYS present findings after the pipeline finishes
 
 Current date: {datetime.datetime.now().strftime("%Y-%m-%d")}
 """,
