@@ -1,0 +1,39 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "dev_vn_error_analysis",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Analyze errors in dev-vn environment for the last 2 hours"}]
+      }
+    },
+    {
+      "eval_case_id": "prod_investigation",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Investigate what hit prod last hour, focus on ERROR and CRITICAL severity"}]
+      }
+    },
+    {
+      "eval_case_id": "service_specific",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Check luz-baumer logs in dev-vn, what's failing?"}]
+      }
+    },
+    {
+      "eval_case_id": "ambiguous_env",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Why is my service failing?"}]
+      }
+    },
+    {
+      "eval_case_id": "custom_severity",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Show me WARNING level logs from test environment last 30 minutes"}]
+      }
+    }
+  ]
+}
