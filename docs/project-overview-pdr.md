@@ -6,7 +6,7 @@
 
 **Problem Solved:** Manual log analysis is slow, error-prone, and requires deep GCP expertise. Teams waste hours manually searching logs, grouping errors, and writing incident reports.
 
-**Solution:** A 5-agent pipeline that analyzes logs in seconds, surfaces critical error patterns, and generates actionable investigation reports.
+**Solution:** A 6-agent pipeline with preflight validation that analyzes logs in seconds, surfaces critical error patterns, and generates actionable investigation reports.
 
 ## Target Users
 
@@ -91,10 +91,11 @@
 ## Architecture Decisions
 
 ### Decision 1: Agent-Based Pipeline
-**Chosen:** 5-agent sequential pipeline (param_gatherer → log_fetcher → log_analyzer → report_composer → report_saver)
+**Chosen:** 6-agent sequential pipeline (preflight_checker → param_gatherer → log_fetcher → log_analyzer → report_composer → report_saver)
 
 **Rationale:**
 - Separation of concerns: each agent has a single responsibility
+- Fail-fast validation: preflight checks before expensive operations
 - Extensibility: easy to insert/modify agents without breaking others
 - Testing: can test agents independently
 - ADK support: native SequentialAgent pattern with output_key communication
@@ -102,6 +103,7 @@
 **Alternatives Rejected:**
 - Single monolithic agent: harder to test, less maintainable
 - Parallel agents: overkill for linear log→analyze→report workflow
+- Post-pipeline auth check: wastes tokens on impossible analyses
 
 ### Decision 2: Session State as Communication Bus
 **Chosen:** Use ADK's `output_key` for inter-agent data passing
@@ -177,7 +179,7 @@
 ## Implementation Roadmap
 
 ### Phase 1: MVP (Complete)
-- ✅ 5-agent pipeline
+- ✅ 6-agent pipeline (with PreflightChecker for auth validation)
 - ✅ GCP log fetching (gcloud CLI)
 - ✅ Error grouping and pattern analysis
 - ✅ Markdown report generation
@@ -224,7 +226,7 @@
 
 ### External Services
 - Google Cloud Logging API (via gcloud CLI)
-- Gemini API (gemini-2.0-flash model)
+- Gemini API (gemini-2.5-flash model)
 - (Optional) Google Cloud Storage (for telemetry)
 - (Optional) Polaris MCP Server (for skill-based tools)
 

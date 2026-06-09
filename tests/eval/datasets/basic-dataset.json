@@ -26,6 +26,32 @@
       "prompt": {
         "role": "user",
         "parts": [{"text": "Why is my service failing?"}]
+      },
+      "rubric_groups": {
+        "expected_behavior": {
+          "group_id": "expected_behavior",
+          "display_name": "Expected Behavior for Ambiguous Request",
+          "rubrics": [
+            {
+              "rubric_id": "clarification_is_correct",
+              "content": {
+                "property": {
+                  "description": "The agent asks the user which GCP environment to investigate (dev-vn, dev, test, performance, or prod) BEFORE fetching any logs. Responding with a clarification question — without fetching logs or generating a report — is the CORRECT and expected behavior for this ambiguous request."
+                }
+              },
+              "importance": "HIGH"
+            },
+            {
+              "rubric_id": "no_premature_fetch",
+              "content": {
+                "property": {
+                  "description": "The agent does NOT attempt to fetch logs or guess an environment when the user's request contains no environment information. Proceeding without clarification would be an error."
+                }
+              },
+              "importance": "HIGH"
+            }
+          ]
+        }
       }
     },
     {
@@ -47,6 +73,55 @@
       "prompt": {
         "role": "user",
         "parts": [{"text": "Show me CRITICAL logs from dev environment in the last 5 minutes"}]
+      }
+    },
+    {
+      "eval_case_id": "clarification_followup",
+      "conversation_history": [
+        {
+          "author": "user",
+          "content": {
+            "role": "user",
+            "parts": [{"text": "Why is my service failing?"}]
+          }
+        },
+        {
+          "author": "log_analyst_coordinator",
+          "content": {
+            "role": "model",
+            "parts": [{"text": "I'd be happy to investigate. Which environment should I check — dev-vn, dev, test, performance, or prod?"}]
+          }
+        }
+      ],
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Check dev-vn"}]
+      },
+      "rubric_groups": {
+        "expected_behavior": {
+          "group_id": "expected_behavior",
+          "display_name": "Multi-Turn Clarification Flow",
+          "rubrics": [
+            {
+              "rubric_id": "proceeds_after_clarification",
+              "content": {
+                "property": {
+                  "description": "After the user says 'Check dev-vn', the agent correctly identifies dev-vn as the target environment, fetches logs from the klara-nonprod project, and produces a log analysis report. The agent does NOT ask for further clarification — it proceeds with the analysis."
+                }
+              },
+              "importance": "HIGH"
+            },
+            {
+              "rubric_id": "correct_env_resolution",
+              "content": {
+                "property": {
+                  "description": "The agent correctly identifies 'dev-vn' as the target environment and proceeds to fetch logs from the corresponding GCP project without asking for further clarification. The response includes a log analysis report or explains why logs could not be fetched."
+                }
+              },
+              "importance": "HIGH"
+            }
+          ]
+        }
       }
     }
   ]

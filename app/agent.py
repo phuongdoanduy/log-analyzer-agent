@@ -677,13 +677,26 @@ Read the 'analysis_params' state key for:
 **Steps:**
 1. Call `fetch_gcp_logs` with the resolved parameters (including env)
 2. Check the result status
-3. If error, report it and stop
+3. If error, follow the ERROR HANDLING block below and stop
 4. If success, report the count and file path
+
+**ERROR HANDLING — STRUCTURED OUTPUT:**
+If fetch_gcp_logs returns status "error", output ALL of the following before stopping:
+FETCH_STATUS: ERROR
+1. Environment requested: <env name from analysis_params>
+2. GCP project targeted: <project id from analysis_params>
+3. Error type: classify as one of — PERMISSION_DENIED | AUTH_EXPIRED | PROJECT_NOT_FOUND | TIMEOUT | UNKNOWN
+   (use PERMISSION_DENIED if the message contains "permission", "denied", "403", "PERMISSION_DENIED", or "does not have")
+4. Error detail: the raw error message from the tool result
+5. Likely cause: explain in plain English
+   (e.g. "The current gcloud credentials are scoped to klara-nonprod and cannot read klara-prod logs.")
+6. Recommended next steps:
+   (e.g. "Run `gcloud auth login --update-adc` with a prod-scoped account, or request logging.read access to the project.")
 
 CRITICAL RULES:
 - NEVER truncate silently. Always tell user if data was cut off.
 - If the result set hits the limit, notify the user with exact count vs estimated total.
-- If fetch fails, stop the workflow and report the error.
+- If fetch fails, always start your response with "FETCH_STATUS: ERROR" on its own line, then output the full structured summary above.
 """,
     tools=[log_fetch_tool],
     output_key="fetch_result",
@@ -706,13 +719,20 @@ Read 'fetch_result' state key for the log file path.
 **Steps:**
 1. Call `analyze_log_file` with the log file path from fetch_result
 2. Review the analysis results
-3. For each error group, provide a potential root cause based on the error message
-4. Identify patterns: repeated errors, cascading failures, service-specific issues
+3. For each error group, note a potential cause ONLY if it can be derived from the pattern text and occurrence count
+4. Identify patterns: repeated entries, cascading failures, service-specific issues
+
+**GROUNDING RULE (mandatory):**
+For each error group returned by analyze_log_file, you MAY suggest a potential cause ONLY if you
+can cite the exact pattern text and count from the tool output.
+Format: "Based on <count> occurrences of pattern '<first 60 chars of pattern>...'"
+If no clear cause can be derived from the message text alone, write: "cause unknown — needs investigation"
+NEVER invent service names, stack traces, error codes, or causes not present in the tool output.
 
 **Output must include:**
 - Severity breakdown (count per level)
-- Top 5 error patterns with potential causes
-- Affected services list
+- Top 5 log patterns with evidence-grounded potential causes
+- Affected services list (from tool output only)
 - Brief analysis summary
 
 Output as structured JSON matching the LogAnalysisResult schema.
@@ -735,6 +755,20 @@ report_composer = LlmAgent(
     ),
     instruction="""You are an incident investigator. Transform the log analysis into a professional report.
 
+**FETCH FAILURE HANDLING:**
+If {fetch_result} starts with or contains "FETCH_STATUS: ERROR",
+generate an "Analysis Incomplete" report with these sections ONLY and then stop:
+  ## 1. Executive Summary
+  State that the analysis could not be completed and why (cite the error type from fetch_result).
+  ## 2. Error Details
+  - Environment: <env from analysis_params>
+  - GCP Project: <project from analysis_params>
+  - Error type: <error type from fetch_result>
+  - Error detail: <raw error message>
+  ## 3. Recommended Next Steps
+  Provide actionable steps for the user to resolve the access issue.
+Skip sections 4-6. Still pass this partial report content to report_saver.
+
 ---
 ### INPUT DATA
 * Analysis Params: `{analysis_params}`
@@ -749,27 +783,31 @@ report_composer = LlmAgent(
 - 2-3 sentence summary of what was found
 - Overall severity assessment (critical/high/medium/low)
 
-## 2. Error Summary
-- Total errors and warnings
-- Severity breakdown (use a simple list or bullet points, do NOT use a table)
-- Top 5 error patterns (use a numbered or bulleted list, do NOT use a table)
+## 2. Log Summary
+- Total entries fetched and time range
+- Severity breakdown — all levels present (use bullet points, do NOT use a table)
+- Top 5 most frequent patterns (use a numbered list; call them "patterns" not "errors" when
+  the requested severity is WARNING, INFO, or DEBUG)
 
 ## 3. Detailed Findings
-For each error group:
-- Error pattern/message
+For each log pattern group:
+- Pattern/message text (cite from log_analysis tool output)
 - Count and frequency
-- Affected services
-- Potential root cause
+- Affected services (from tool output only)
+- Potential root cause (evidence-grounded: cite pattern text + count; write "cause unknown — needs investigation" if insufficient evidence)
 - Sample log messages (bullet points)
 
 ## 4. Affected Services
-- List of services/containers with errors
-- Error count per service (use bullet points)
+- List every service/container present in the log data (from log_analysis.services_affected)
+- Entry count per service (use bullet points)
+- If no service labels are present in the logs, write: "No service labels found in log data."
+  DO NOT omit this section.
 
 ## 5. Recommendations
-- Immediate actions to take
-- Investigation steps
-- Prevention measures
+- CRITICAL/ERROR severity: immediate remediation steps, escalation path, on-call notification
+- WARNING severity: proactive monitoring steps, thresholds to watch, follow-up investigations to schedule
+- If log volume is below threshold or no patterns found: "No actionable recommendations — log volume is below threshold for this time window."
+  DO NOT omit this section.
 
 ## 6. Raw Data Reference
 - Log file path
@@ -778,12 +816,16 @@ For each error group:
 
 ---
 ### RULES
+- ANTI-HALLUCINATION (enforced): Every finding in sections 3 and 5 must be traceable to data
+  in log_analysis. If log_analysis contains no supporting data for a claim, omit the claim.
+  Do NOT infer services, causes, or patterns beyond what log_analysis explicitly provides.
+- COMPLETENESS: All 6 sections must appear in every report. If a section has no data,
+  write a one-line note (e.g. "No data available") — never skip the section header.
+- SEVERITY LANGUAGE: When the requested severity is WARNING, INFO, or DEBUG, replace "error"
+  with "issue" or "log entry" throughout sections 2, 3, and 5.
 - NEVER use markdown tables anywhere in the report. Use clear bullet points or numbered lists instead.
-- Every finding must have evidence from the logs.
-- Never guess root cause without log evidence.
-- State when evidence is insufficient.
+- State when evidence is insufficient rather than inventing a cause.
 - Be specific about affected services and error patterns.
-- Include actionable recommendations.
 - Avoid extensive whitespace padding or alignment spacing.
 """,
     output_key="investigation_report",
@@ -798,7 +840,7 @@ report_saver = LlmAgent(
     include_contents="none",
     generate_content_config=genai_types.GenerateContentConfig(temperature=0),
     description="Saves the investigation report to a markdown file.",
-    instruction="""Save the investigation report to disk.
+    instruction="""Save the investigation report to disk and present it to the user.
 
 Report content:
 {final_report}
@@ -806,11 +848,15 @@ Report content:
 Analysis params (contains env name):
 {analysis_params}
 
-Call `save_report` with:
-- report_content: the final_report content above
-- env: the environment name from analysis_params
+IMPORTANT: Do NOT output any text before calling the tool. Call save_report FIRST.
 
-Report the saved file path to the user.
+Steps:
+1. FIRST call `save_report` with:
+   - report_content: the final_report content above
+   - env: the environment name from analysis_params
+2. AFTER the tool returns, output in a single response:
+   - The FULL report content (from final_report above)
+   - Followed by: "---\\n**Report saved to:** `<filepath from tool result>`"
 """,
     tools=[report_save_tool],
     output_key="save_result",
@@ -842,7 +888,13 @@ log_analysis_pipeline = _EvalSequentialAgent(
 log_analyst_coordinator = LlmAgent(
     name="log_analyst_coordinator",
     model=config.worker_model,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0),
+    generate_content_config=genai_types.GenerateContentConfig(
+        temperature=0,
+        # Disable thinking: gemini-2.5-flash with thinking enabled outputs
+        # transfer_to_agent as plain text JSON instead of a native function
+        # call, causing the pipeline to never run.
+        thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+    ),
     before_agent_callback=init_coordinator_state,
     description=(
         "The primary log analysis assistant. Collaborates with the user to "

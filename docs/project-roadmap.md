@@ -3,24 +3,26 @@
 ## Current Status Summary
 
 **Version:** 0.1.0  
-**Release Date:** Q1 2026  
-**Overall Progress:** ~40% complete (Phase 1 done, Phase 2 in progress)
+**Release Date:** February 2026  
+**Current Date:** June 6, 2026  
+**Overall Progress:** ~42% complete (Phase 1 done, Phase 2 in progress — 35% done)
 
 ## Phase Timeline
 
 ```
 Phase 1: MVP Foundation       ✅ COMPLETE
-├─ 5-agent pipeline           ✅ Done
+├─ 6-agent pipeline           ✅ Done (with PreflightChecker)
 ├─ GCP log fetching           ✅ Done
 ├─ Error grouping             ✅ Done
 └─ Report generation          ✅ Done
 
-Phase 2: Testing & Eval       🔄 IN PROGRESS (30% done)
-├─ Unit test suite            📝 Planned (test_dummy.py placeholder exists)
-├─ Integration tests          ✅ Done (test_server_e2e.py)
-├─ Eval dataset creation      📝 In progress
-├─ Custom metrics             ✅ Done (3 metrics defined)
-└─ Error deduplication        📝 Planned (callback framework ready)
+Phase 2: Testing & Eval       🔄 IN PROGRESS (35% done)
+├─ Unit test suite            📝 Pending (0% — test_dummy.py placeholder)
+├─ Integration tests          ✅ Done (100% — test_server_e2e.py)
+├─ Eval dataset creation      🔄 In progress (70% — 8 test cases; ambiguous_env + clarification_followup)
+├─ Custom metrics             ✅ Done (100% — 3 metrics defined)
+├─ Error deduplication        📝 Pending (20% — callback framework ready)
+└─ Agent instructions         ✅ Done (100% — fetch failure, grounding, anti-hallucination, completeness rules)
 
 Phase 3: Advanced Features    📋 PLANNED
 ├─ ML-based clustering        📋 Design phase
@@ -42,16 +44,18 @@ Phase 4: Deployment & GA      📋 PLANNED
 Build a functional log analysis pipeline that fetches GCP logs, identifies error patterns, and generates reports.
 
 ### Completed Work (100%)
-- ✅ 5-agent sequential pipeline (param_gatherer → log_fetcher → log_analyzer → report_composer → report_saver)
+- ✅ 6-agent sequential pipeline (preflight_checker → param_gatherer → log_fetcher → log_analyzer → report_composer → report_saver)
 - ✅ GCP log fetching via gcloud CLI
 - ✅ Error grouping by message pattern (first 100 chars)
 - ✅ Markdown report generation with findings
 - ✅ FastAPI server with streaming support
 - ✅ User feedback collection endpoint
 - ✅ Docker image (python:3.12-slim, port 8080)
-- ✅ Preflight authentication check
+- ✅ Preflight authentication check (custom BaseAgent)
 - ✅ Multi-environment support (dev-vn, dev, test, performance, prod)
 - ✅ Severity classification (critical/high/medium/low)
+- ✅ Extended thinking on log_analyzer (budget_tokens=5000)
+- ✅ Callbacks for error deduplication and report finalization
 
 ### Key Metrics
 - **Time to report:** <30 seconds for 500 logs
@@ -65,7 +69,7 @@ Build robust test coverage, create eval datasets, and improve error deduplicatio
 
 ### Current Progress
 
-#### 2.1 Unit Test Suite (0% done)
+#### 2.1 Unit Test Suite (0% done — PENDING)
 **Status:** `test_dummy.py` is placeholder  
 **Plan:**
 1. Replace placeholder with real tests for:
@@ -73,15 +77,16 @@ Build robust test coverage, create eval datasets, and improve error deduplicatio
    - agent.py tools (verify_gcloud_auth, analyze_log_file, save_report)
    - app_utils/telemetry.py (OTel setup)
 2. Target: >80% coverage on critical paths
-3. Timeline: Week 1-2 of Phase 2
+3. Estimated timeline: 2-3 weeks
 
 **Test Categories:**
 ```
 tests/unit/
 ├── test_config.py           # Environment map, project resolution
-├── test_agent_tools.py      # Tool functions (mock subprocess)
-├── test_telemetry.py        # OTel setup
-└── test_models.py           # Pydantic models (validation)
+├── test_agent_tools.py      # Tool functions (mock subprocess, JSON parsing)
+├── test_telemetry.py        # OTel setup and GCS integration
+├── test_models.py           # Pydantic models (validation)
+└── test_callbacks.py        # Error deduplication and report finalization
 ```
 
 #### 2.2 Integration Tests (100% done)
@@ -94,24 +99,26 @@ tests/unit/
 
 **File:** `tests/integration/test_server_e2e.py` (starts real FastAPI server)
 
-#### 2.3 Eval Dataset Creation (40% done)
-**Status:** 🔄 In progress  
-**Plan:**
-1. Create 3-5 canonical test cases (known error patterns)
-2. Golden datasets: input logs + expected analysis results
-3. Store in `tests/eval/datasets/`
+#### 2.3 Eval Dataset Creation (70% done — IN PROGRESS)
+**Status:** 🔄 In progress (8 test cases created; ambiguous and multi-turn cases added)
+**Current State:**
+1. ✅ 8 canonical test cases with known error patterns and behaviors
+2. ✅ Golden datasets stored in `tests/eval/datasets/`
+3. ✅ ambiguous_env case with rubric_groups: clarifies expected behavior (agent asks for env, does NOT fetch without clarification)
+4. ✅ clarification_followup case: tests multi-turn flow where user provides env in follow-up message
+5. 🔄 Ongoing refinement based on eval metric results
 
-**Example Test Case:**
-```
-Input: 50 "connection timeout" errors, 20 "auth failure" errors
-Expected Output:
-  - 2 error groups identified
-  - Connection timeout group: 50 occurrences, CRITICAL severity
-  - Auth failure group: 20 occurrences, HIGH severity
-  - Report severity: HIGH
-```
+**Test Cases:**
+1. dev_vn_error_analysis — Standard dev-vn analysis (2h window, ERROR severity)
+2. prod_investigation — Production logs (1h, ERROR+CRITICAL)
+3. service_specific — Service filter (dev-vn, luz-baumer service)
+4. ambiguous_env — No env specified (expected: clarification question, no fetch)
+5. custom_severity — WARNING logs (test environment, 30m window, severity-neutral language)
+6. invalid_env — Invalid env name (expected: clear error message)
+7. empty_logs — Time window with no logs (expected: empty result report)
+8. clarification_followup — Multi-turn: ambiguous → clarification → user responds with "Check dev-vn" (expected: fetch + analysis)
 
-**Timeline:** Week 2-3 of Phase 2
+**Remaining Work:** Validate all datasets run successfully, add more edge cases if needed
 
 #### 2.4 Custom Eval Metrics (100% done)
 **Status:** ✅ Defined  
@@ -124,25 +131,39 @@ Expected Output:
 
 **Usage:** `agents-cli eval run` (generates traces, grades with metrics, compares)
 
-#### 2.5 Error Deduplication (20% done)
-**Status:** Framework ready, logic TBD  
-**Current:** collect_errors_callback aggregates errors  
-**Enhancement:** ML-based deduplication (Phase 3)
+#### 2.5 Agent Instruction Refinements (100% DONE)
+**Status:** ✅ Complete  
+**Improvements:**
+1. **log_fetcher** — Outputs 6-field error summary with `FETCH_STATUS: ERROR` sentinel on permission/auth/timeout failures
+2. **log_analyzer** — Added GROUNDING RULE: all potential causes must cite pattern text + count from tool output; "cause unknown — needs investigation" when insufficient evidence
+3. **report_composer** — Three additions:
+   - FETCH FAILURE HANDLING: detects `FETCH_STATUS: ERROR`, generates 3-section "Analysis Incomplete" report
+   - Severity-neutral language: "patterns/issues" not "errors" for WARNING/INFO/DEBUG severity
+   - COMPLETENESS + ANTI-HALLUCINATION: all 6 sections always present; findings must trace to log_analysis data
 
-**Timeline:** Week 3-4 of Phase 2 (as improvement, not blocker)
+**Impact:** Prevents hallucination, enables graceful error recovery, ensures report quality
+
+#### 2.6 Error Deduplication (20% done — FRAMEWORK READY)
+**Status:** Framework implemented, logic refinements pending  
+**Current:** collect_errors_callback aggregates and deduplicates errors  
+**Implementation:** Message prefix matching (first 100 chars) + dedup logic
+**Enhancement Plan:** ML-based deduplication in Phase 3 if needed
+
+**Remaining Work:** Performance testing on large datasets (1000+ logs)
 
 ### Phase 2 Success Criteria
 - [ ] Unit tests pass (>80% coverage)
-- [ ] Integration tests pass
-- [ ] Eval dataset created (5+ test cases)
-- [ ] Custom metrics implemented
+- [ ] Integration tests pass ✅
+- [ ] Eval dataset created (8 test cases, includes ambiguous + multi-turn) ✅
+- [ ] Custom metrics implemented ✅
+- [ ] Agent instructions refined (fetch failure, grounding, anti-hallucination) ✅
 - [ ] Error deduplication improved (feedback loop)
 
-### Phase 2 Timeline
+### Phase 2 Timeline (Revised)
 - **Start:** February 2026
-- **Milestone 1 (Week 2):** Unit tests + coverage
-- **Milestone 2 (Week 4):** Eval datasets + metrics
-- **Target Completion:** End of February 2026
+- **Completed:** Integration tests (100%), custom metrics (100%), agent instructions (100%)
+- **Current (June 6, 2026):** Eval datasets (70%), error dedup (20%), unit tests (0%)
+- **Revised Target Completion:** End of June 2026
 
 ## Phase 3: Advanced Features — PLANNED
 
@@ -363,10 +384,10 @@ Legend: ✅ Done | 🔄 In Progress | 📋 Planned
 
 ## Version History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.1.0 | Feb 2026 | Initial MVP: 5-agent pipeline, report generation |
-| 0.2.0 | Mar 2026 | Phase 2: Unit tests, eval, improved deduplication |
-| 0.3.0 | Apr 2026 | Phase 3: ML clustering, multi-project, Slack |
-| 0.4.0 | May 2026 | Phase 4: Agent Runtime, monitoring, GA |
-| 1.0.0 | Jun 2026 | Production-ready, stable API |
+| Version | Date | Status | Changes |
+|---------|------|--------|---------|
+| 0.1.0 | Feb 2026 | RELEASED | Initial MVP: 6-agent pipeline, report generation, FastAPI server |
+| 0.2.0 | TBD | IN PROGRESS | Phase 2: Unit tests (pending), eval datasets (60%), improved deduplication |
+| 0.3.0 | Q3 2026 | PLANNED | Phase 3: ML clustering, multi-project, Slack integration |
+| 0.4.0 | Q4 2026 | PLANNED | Phase 4: Agent Runtime, monitoring, GA launch |
+| 1.0.0 | 2027 | PLANNED | Production-ready, stable API, full monitoring |

@@ -4,7 +4,7 @@
 
 **log-analyzer-agent** is a GCP log analysis and incident investigation agent built on Google ADK (Agent Development Kit). It analyzes logs from GCP Cloud Logging to identify error patterns, group similar errors, and generate structured investigation reports for DevOps and SRE teams.
 
-**Tech Stack:** Python 3.11+, Google ADK ≥1.15.0, Gemini 2.0 Flash, FastAPI, uv package manager.
+**Tech Stack:** Python 3.11+, Google ADK ≥1.15.0, Gemini 2.5 Flash, FastAPI, uv package manager.
 
 ## Directory Structure
 
@@ -60,17 +60,17 @@ log-analyzer-agent/
 
 2. **Tools (FunctionTool wrappers):**
    - `verify_gcloud_auth()` — Checks gcloud CLI installation and authentication
-   - `fetch_gcp_logs()` — Runs `gcloud logging read` with filters, saves JSON
-   - `analyze_log_file()` — Parses logs, groups errors by first 100 chars of message
+   - `fetch_gcp_logs()` — Runs `gcloud logging read` with filters, saves JSON; outputs 6-field error summary with sentinel `FETCH_STATUS: ERROR` on permission/auth/timeout failures
+   - `analyze_log_file()` — Parses logs, groups errors by first 100 chars of message; applies GROUNDING RULE requiring all potential causes to cite pattern text + count from tool output
    - `save_report()` — Writes markdown report to `plans/reports/`
 
-3. **Agents:**
-   - `PreflightChecker` — Verifies gcloud auth before pipeline runs
+3. **Agents (6 total):**
+   - `PreflightChecker` — Verifies gcloud auth before pipeline runs (custom BaseAgent)
    - `param_gatherer` — Extracts environment, severity, freshness from user request
-   - `log_fetcher` — Fetches logs from GCP Cloud Logging
-   - `log_analyzer` — Groups errors, identifies patterns (with BuiltInPlanner enabled)
-   - `report_composer` — Generates markdown investigation report
-   - `report_saver` — Saves report to disk with metadata
+   - `log_fetcher` — Fetches logs from GCP Cloud Logging; detects FETCH_STATUS: ERROR for permission/auth/timeout errors and outputs structured 6-field error summary
+   - `log_analyzer` — Groups errors, identifies patterns (with BuiltInPlanner enabled, budget_tokens=5000); enforces GROUNDING RULE: all potential causes must cite pattern text + count from tool output
+   - `report_composer` — Generates markdown investigation report (include_contents="none"); handles FETCH FAILURE with 3-section "Analysis Incomplete" report; uses severity-neutral language (e.g., "patterns/issues" not "errors" for WARNING/INFO/DEBUG)
+   - `report_saver` — Saves report to disk with metadata (include_contents="none")
    - `log_analyst_coordinator` (root) — Understands user request, delegates to pipeline
 
 4. **Callbacks:**
@@ -83,7 +83,7 @@ log-analyzer-agent/
 
 **Key Data:**
 - `env_map` — Maps environment names (dev-vn, dev, test, performance, prod) to GCP projects, clusters, regions
-- `worker_model` — Default model for agent reasoning (gemini-2.0-flash)
+- `worker_model` — Default model for agent reasoning (gemini-2.5-flash)
 - `default_severity`, `default_freshness`, `default_limit` — Analysis parameters
 - Helper methods: `get_project()`, `get_cluster()`, `get_region()`
 
@@ -132,12 +132,13 @@ User Request
 Response to user
 ```
 
-## Session State Keys
+## Session State Keys (8 total)
 
 Agents communicate exclusively via session state (`output_key` in ADK):
 
 | Key | Producer | Consumer | Type |
 |-----|----------|----------|------|
+| `preflight_result` | preflight_checker | — | Dict[str, str] |
 | `analysis_params` | param_gatherer | log_fetcher, report_composer | Dict[str, Any] |
 | `fetch_result` | log_fetcher | log_analyzer, report_composer | Dict[str, str] |
 | `log_analysis` | log_analyzer | report_composer, collect_errors_callback | LogAnalysisResult |
@@ -246,10 +247,13 @@ Report severity is calculated from error count:
 - GCP log fetching and analysis
 - Markdown report generation
 
-**Phase 2 (In Progress):**
-- Real unit tests (test_dummy.py is placeholder)
-- Eval datasets and metrics
-- Error deduplication improvements
+**Phase 2 (In Progress — ~35% done):**
+- Unit tests (test_dummy.py is placeholder, 0% done)
+- Integration tests (test_server_e2e.py, 100% done)
+- Eval datasets (8 test cases created, ~70% done; ambiguous_env case includes rubric_groups for expected behavior; new clarification_followup case tests multi-turn env resolution)
+- Custom metrics (3 metrics defined, 100% done)
+- Error deduplication improvements (callback framework ready, 20% done)
+- Agent instruction refinements (fetch failure handling, grounding rules, anti-hallucination, completeness rules, 100% done)
 
 **Phase 3 (Planned):**
 - ML-based error clustering

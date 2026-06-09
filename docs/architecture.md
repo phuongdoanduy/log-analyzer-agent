@@ -20,30 +20,43 @@
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │         log_analysis_pipeline (SequentialAgent)          │  │
 │  │                                                          │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │  │
-│  │  │   param     │→ │    log      │→ │     log         │  │  │
-│  │  │  gatherer   │  │   fetcher   │  │    analyzer     │  │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │  │
+│  │  ┌──────────────┐  ┌─────────────┐  ┌─────────────────┐ │  │
+│  │  │  preflight   │→ │   param     │→ │    log          │ │  │
+│  │  │   checker    │  │  gatherer   │  │   fetcher       │ │  │
+│  │  └──────────────┘  └─────────────┘  └─────────────────┘ │  │
 │  │         │                │                 │             │  │
 │  │         ▼                ▼                 ▼             │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │  │
-│  │  │  analysis   │  │   fetch     │  │   log_analysis  │  │  │
-│  │  │   params    │  │   result    │  │   (structured)  │  │  │
-│  │  │  (state)    │  │   (state)   │  │    (state)      │  │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │  │
+│  │  ┌──────────────┐  ┌─────────────┐  ┌─────────────────┐ │  │
+│  │  │  preflight   │  │  analysis   │  │   fetch         │ │  │
+│  │  │   result     │  │   params    │  │   result        │ │  │
+│  │  │  (state)     │  │  (state)    │  │   (state)       │ │  │
+│  │  └──────────────┘  └─────────────┘  └─────────────────┘ │  │
 │  │                                                          │  │
-│  │  ┌─────────────────┐  ┌────────────────────────────────┐ │  │
-│  │  │    report       │→ │        report_saver            │ │  │
-│  │  │   composer      │  │  (saves to plans/reports/)     │ │  │
-│  │  └─────────────────┘  └────────────────────────────────┘ │  │
-│  │          │                      │                        │  │
-│  │          ▼                      ▼                        │  │
-│  │  ┌─────────────────┐  ┌────────────────────────────────┐ │  │
-│  │  │ investigation   │  │      save_result              │ │  │
-│  │  │    report       │  │        (state)                │ │  │
-│  │  │   (state)       │  └────────────────────────────────┘ │  │
-│  │  └─────────────────┘                                     │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  │  ┌─────────────────┐  ┌─────────────────────────────┐  │  │
+│  │  │     log         │→ │   report_composer   →       │  │  │
+│  │  │    analyzer     │  │    (include_contents="none")│  │  │
+│  │  └─────────────────┘  └─────────────────────────────┘  │  │
+│  │         │                      │                       │  │
+│  │         ▼                      ▼                       │  │
+│  │  ┌─────────────────┐  ┌──────────────────────────┐  │  │
+│  │  │  log_analysis   │  │ investigation_report     │  │  │
+│  │  │   (structured)  │  │  (markdown)              │  │  │
+│  │  │   (state)       │  │  (state)                 │  │  │
+│  │  └─────────────────┘  └──────────────────────────┘  │  │
+│  │                             │                       │  │
+│  │                             ▼                       │  │
+│  │                  ┌──────────────────────────────┐  │  │
+│  │                  │    report_saver              │  │  │
+│  │                  │  (saves to plans/reports/)   │  │  │
+│  │                  │  (include_contents="none")   │  │  │
+│  │                  └──────────────────────────────┘  │  │
+│  │                             │                       │  │
+│  │                             ▼                       │  │
+│  │                  ┌──────────────────────────────┐  │  │
+│  │                  │      save_result             │  │  │
+│  │                  │        (state)               │  │  │
+│  │                  └──────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────┘  │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                        TOOLS LAYER                              │
@@ -125,10 +138,11 @@ analysis_params    fetch_result.json    log_analysis
                 log-analysis-<env>-<date>.md
 ```
 
-## Session State Keys
+## Session State Keys (8 total)
 
 | Key | Set by | Used by | Description |
 |-----|--------|---------|-------------|
+| `preflight_result` | preflight_checker | — | Auth verification result |
 | `analysis_params` | param_gatherer | log_fetcher, report_composer | Extracted parameters |
 | `fetch_result` | log_fetcher | log_analyzer | Fetch status and file path |
 | `log_analysis` | log_analyzer | report_composer | Structured analysis results |

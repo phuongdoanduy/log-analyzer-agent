@@ -2,7 +2,7 @@
 
 AI-powered GCP log analysis platform that automates incident investigation for DevOps and SRE teams.
 
-**Status:** v0.1.0 (MVP) — 5-agent pipeline with log fetching, error analysis, and report generation.
+**Status:** v0.1.0 (MVP) — 6-agent pipeline with preflight checks, log fetching, error analysis, and report generation.
 
 ## What It Does
 
@@ -68,10 +68,11 @@ Reports are saved to `plans/reports/log-analysis-{env}-{timestamp}.md`
 
 ## Architecture
 
-**5-Agent Sequential Pipeline:**
+**6-Agent Sequential Pipeline:**
 ```
 log_analyst_coordinator
 └── log_analysis_pipeline
+    ├─ preflight_checker    → verify gcloud auth before analysis
     ├─ param_gatherer       → resolves environment, severity, freshness
     ├─ log_fetcher          → gcloud logging read + save JSON
     ├─ log_analyzer         → group errors, identify patterns (with extended thinking)
@@ -118,7 +119,7 @@ See [docs/project-roadmap.md](docs/project-roadmap.md) for detailed timeline.
 - **Framework:** Google ADK ≥1.15.0
 - **Language:** Python 3.11+
 - **Package Manager:** uv
-- **Model:** Gemini 2.0 Flash
+- **Model:** Gemini 2.5 Flash
 - **API:** FastAPI (via ADK)
 - **Testing:** pytest + pytest-asyncio
 - **Linting:** ruff + ty + codespell

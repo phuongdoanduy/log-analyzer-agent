@@ -277,19 +277,20 @@ pytest --cov=app --cov-report=html
 All agents inherit from ADK base classes (LlmAgent, SequentialAgent, BaseAgent):
 
 ```python
-from google.adk.agents import LlmAgent, SequentialAgent
+from google.adk.agents import LlmAgent, SequentialAgent, BaseAgent
 
 # Coordinator agent (user-facing)
 coordinator = LlmAgent(
     id="log_analyst_coordinator",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     system_prompt="You are a log analysis coordinator...",
 )
 
-# Pipeline agent (orchestrator)
+# Pipeline agent (orchestrator) — 6 agents total
 pipeline = SequentialAgent(
     id="log_analysis_pipeline",
     agents=[
+        preflight_checker,  # Auth validation (BaseAgent)
         param_gatherer,
         log_fetcher,
         log_analyzer,

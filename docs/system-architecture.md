@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-The log analyzer agent uses a **sequential 5-agent pipeline** pattern orchestrated by Google ADK. Each agent is independent, communicates via session state keys, and delegates to specialized tools.
+The log analyzer agent uses a **sequential 6-agent pipeline** pattern orchestrated by Google ADK. Each agent is independent, communicates via session state keys, and delegates to specialized tools.
 
 ```
 User Request (natural language)
@@ -13,6 +13,7 @@ User Request (natural language)
     └─ Delegates to pipeline
          ↓
 [SequentialAgent] log_analysis_pipeline
+    ├─ [Agent 0] preflight_checker → output_key: preflight_result
     ├─ [Agent 1] param_gatherer → output_key: analysis_params
     ├─ [Agent 2] log_fetcher → output_key: fetch_result
     ├─ [Agent 3] log_analyzer → output_key: log_analysis
@@ -87,10 +88,11 @@ For detailed ASCII diagrams, see `docs/architecture.md`.
 - Run `gcloud logging read` with filters
 - Parse CLI response
 - Save raw logs to JSON file
-- Handle errors (API rate limits, network, auth)
+- Handle errors (API rate limits, network, auth) with structured error summary
 
 **Input:** `analysis_params`
 **Output:** `fetch_result` (dict)
+**Success case:**
 ```python
 {
     "status": "success",
@@ -99,13 +101,21 @@ For detailed ASCII diagrams, see `docs/architecture.md`.
     "time_window": "2024-01-15T10:00 to 2024-01-15T12:00",
 }
 ```
+**Error case:** Starts with `FETCH_STATUS: ERROR` followed by 6-field structured summary:
+- Environment requested
+- GCP project targeted
+- Error type (PERMISSION_DENIED | AUTH_EXPIRED | PROJECT_NOT_FOUND | TIMEOUT | UNKNOWN)
+- Error detail (raw error message)
+- Likely cause (plain English explanation)
+- Recommended next steps (actionable steps)
 
-**Tool:** `fetch_gcp_logs(project, severity, freshness, service_filter, limit, output_file)`
+**Tool:** `fetch_gcp_logs(project, severity, freshness, service_filter, limit, output_file, env)` — note env parameter for GKE cluster-scoped filtering
 
 **Design Rationale:**
 - Encapsulates gcloud CLI complexity
 - Handles subprocess management
 - Persists logs to disk for debugging/audit
+- Structured error output enables downstream agents to recover gracefully
 
 ### 5. log_analyzer (LlmAgent + BuiltInPlanner)
 **When:** After log_fetcher, with extended thinking enabled
@@ -114,7 +124,9 @@ For detailed ASCII diagrams, see `docs/architecture.md`.
 - Group errors by message pattern (first 100 chars)
 - Calculate frequency, severity, first/last seen
 - Identify affected resources
-- Generate potential root causes
+- Generate potential root causes (grounded in pattern evidence)
+
+**GROUNDING RULE:** Every potential_cause must cite the exact pattern text and occurrence count from tool output. If evidence is insufficient, write "cause unknown — needs investigation" instead of inventing a cause.
 
 **Input:** `fetch_result` (log file path)
 **Output:** `log_analysis` (LogAnalysisResult)
@@ -162,9 +174,24 @@ For detailed ASCII diagrams, see `docs/architecture.md`.
 - Generate markdown investigation report
 - Structure: executive summary, findings, recommendations
 - Do NOT see chat history (include_contents="none")
+- Handle fetch failures gracefully
+
+**FETCH FAILURE HANDLING:**
+If `fetch_result` contains "FETCH_STATUS: ERROR", generate 3-section "Analysis Incomplete" report only:
+1. Executive Summary — state why analysis could not be completed
+2. Error Details — environment, GCP project, error type, error detail, root cause
+3. Recommended Next Steps — actionable steps for the user
+Skip remaining sections. Still pass partial report to report_saver.
+
+**COMPLETENESS & ANTI-HALLUCINATION RULES:**
+- All 6 sections must always appear in full reports (skip partial for fetch failures)
+- Every finding in sections 3 and 5 must trace to data in log_analysis
+- Do NOT infer services, causes, or patterns beyond log_analysis
+- Use severity-neutral language: "patterns/issues" not "errors" when severity is WARNING/INFO/DEBUG
 
 **Input:** 
 - `analysis_params` (environment, severity, etc.)
+- `fetch_result` (may contain error details)
 - `log_analysis` (structured analysis result)
 
 **Output:** `investigation_report` (markdown string)
@@ -175,17 +202,35 @@ Generated: 2024-01-15T12:30:00Z
 ## Executive Summary
 Detected 124 errors over 2-hour period. Primary issue: database connection timeouts (45 occurrences). Secondary issues: authentication failures (23), missing resources (15).
 
-## Error Groups
+## Log Summary
+Total entries: 487
+Severity breakdown:
+- ERROR: 124
+- WARNING: 89
+- DEBUG: 274
+
+## Detailed Findings
 1. **Connection Timeout to Database** (45 errors)
-   - Severity: ERROR
+   - Pattern: [first 100 chars from analysis]
+   - Frequency: 45 occurrences
    - Affected Services: api-pod-1, api-pod-2, worker-pod-3
-   - Potential Cause: Replica lag or network partition
-   - Recommendations: Check database health, scale replicas
+   - Potential Cause: Based on 45 occurrences of pattern '...'
+   - Sample messages: [3 samples]
 
 ...
 
-## Raw Logs
-Full logs available at: /tmp/gcp_logs.json
+## Affected Services
+- api-pod-1: 67 entries
+- api-pod-2: 54 entries
+- worker-pod-3: 31 entries
+
+## Recommendations
+[Evidence-grounded recommendations or "No actionable recommendations — log volume is below threshold"]
+
+## Raw Data Reference
+Log file: /tmp/gcp_logs.json
+Time range: [from analysis_params]
+Environment: [env from analysis_params]
 ```
 
 **Tool:** None (pure reasoning)
@@ -194,6 +239,8 @@ Full logs available at: /tmp/gcp_logs.json
 - Markdown format: version-control friendly
 - include_contents="none": prevents token waste on chat history
 - Conversational tone: helps on-call engineers understand quickly
+- Fetch failure handling: reports incomplete analysis instead of guessing
+- All 6 sections always present: completeness for downstream parsing
 
 ### 7. report_saver (LlmAgent)
 **When:** After report_composer
@@ -239,12 +286,13 @@ Full logs available at: /tmp/gcp_logs.json
 - Reusable: callback can be tested independently
 - Pipeline extensibility: callbacks between agents
 
-## Session State (Communication Bus)
+## Session State (Communication Bus — 8 Keys Total)
 
 Agents **do not call each other directly**. They communicate via session state keys:
 
 | Key | Set by | Type | Size | Lifecycle |
 |-----|--------|------|------|-----------|
+| `preflight_result` | preflight_checker | dict | <1 KB | terminal output to user (if auth fails) |
 | `analysis_params` | param_gatherer | dict | <1 KB | read by log_fetcher, report_composer |
 | `fetch_result` | log_fetcher | dict | <1 KB | read by log_analyzer, report_composer |
 | `log_analysis` | log_analyzer | LogAnalysisResult | varies | read by report_composer, build_report_callback |
@@ -393,17 +441,22 @@ app = get_fast_api_app(log_agent, mode="sse")
 - Fail fast with clear message
 - Escalate to user immediately
 
-### Layer 2: Tool Exceptions
+### Layer 2: Fetch Failure Detection (log_fetcher)
+- Detects permission, auth, timeout errors from gcloud
+- Outputs structured 6-field error summary with `FETCH_STATUS: ERROR` sentinel
+- Downstream agents detect sentinel and generate "Analysis Incomplete" report instead of guessing
+
+### Layer 3: Tool Exceptions
 - Tools raise descriptive exceptions
 - Agents see exception and can retry/escalate
 - ADK captures and reports
 
-### Layer 3: Agent Resilience
+### Layer 4: Agent Resilience
 - Agents catch tool exceptions
 - Agents can invoke fallback tools or escalate
 - Report generation continues even if some logs fail
 
-### Layer 4: Server Error Handling
+### Layer 5: Server Error Handling
 - FastAPI catches unhandled exceptions
 - Returns 500 with error summary
 - OTel logs error for debugging
